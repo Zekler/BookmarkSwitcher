@@ -57,7 +57,5 @@ The Bookmark Switcher extension should now be installed and visible on your Chro
 
 ## License
 
-[Optional: Add a license if you wish to open-source your extension.  For example:]
-
 This extension is released under the [MIT License](LICENSE.txt).
 # Bookmark-Switcher
