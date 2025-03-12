@@ -58,4 +58,3 @@ The Bookmark Switcher extension should now be installed and visible on your Chro
 ## License
 
 This extension is released under the [MIT License](LICENSE.txt).
-# Bookmark-Switcher
