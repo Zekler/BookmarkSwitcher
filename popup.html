@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Bookmark Switcher</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+
+      <h1>Bookmark Switcher</h1>
+      <div id="favorites-list">
+        <p id="no-favorites-message">No favorites saved yet.</p>
+        <ul id="favorites-ul">
+        </ul>
+      </div>
+      <hr>
+      <div>
+        <label for="bookmarkFolder">Select Bookmark Folder:</label>
+        <div class="dropdown-and-star-container">
+          <select id="bookmarkFolder"> ... </select>
+          <button id="saveFolderButtonIcon"></button>
+        </div>
+      </div>
+      
+      <button id="switchButton">Switch Bookmarkbar</button>
+      
+      
+      <div id="message"></div>
+    </dvi>
+      <script src="popup.js"></script>
+    </body>
+    </html>
