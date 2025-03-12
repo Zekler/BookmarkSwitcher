@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Bookmark Switcher",
+  "version": "1.0",
+  "description": "Switches bookmarks on the bookmarks bar from a selected folder.",
+  "permissions": [
+    "bookmarks",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Bookmark Switcher"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
