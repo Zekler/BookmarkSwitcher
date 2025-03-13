@@ -7,23 +7,44 @@
 </head>
 <body>
     <div class="container">
-
-      <h1>Bookmark Switcher</h1>
+      <div class="header">
+      </div>
       <div id="favorites-list">
         <p id="no-favorites-message">No favorites saved yet.</p>
         <ul id="favorites-ul">
         </ul>
       </div>
-      <hr>
-      <div>
-        <label for="bookmarkFolder">Select Bookmark Folder:</label>
-        <div class="dropdown-and-star-container">
-          <select id="bookmarkFolder"> ... </select>
-          <button id="saveFolderButtonIcon"></button>
+      <div class="wrapper">
+        <div class="btn-group">
+          <div id="customBookmarkFolder" class="custom-dropdown">
+            <div class="custom-dropdown-trigger">
+                <span>Select a folder</span>
+                <div class="dropdown-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="custom-dropdown-options">
+              <div class="custom-dropdown-option" id="defaultDropDownOption" data-value="0">Select a folder</div>
+            </div>
+            <input type="hidden" id="bookmarkFolder" value="0"> 
+          </div>
+          <div class="btn-group-append" role="group" aria-label="Group">
+            <button type="button" id="switchButton" class="btn btn-switch">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left-right" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-3.147 3.146a.5.5 0 0 0 .708.708l4-4a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5m14-7a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 1 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5"/>
+              </svg>
+            </button>
+            <button type="button" id="saveFolderButtonIcon" class="btn btn-star">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-star" viewBox="0 0 16 16">
+                <path d="M2.866 14.85c-.078.444.36.791.746.593l4.39-2.256 4.389 2.256c.386.198.824-.149.746-.592l-.83-4.73 3.522-3.356c.33-.314.16-.888-.282-.95l-4.898-.696L8.465.792a.513.513 0 0 0-.927 0L5.354 5.12l-4.898.696c-.441.062-.612.636-.283.95l3.523 3.356-.83 4.73zm4.905-2.767-3.686 1.894.694-3.957a.56.56 0 0 0-.163-.505L1.71 6.745l4.052-.576a.53.53 0 0 0 .393-.288L8 2.223l1.847 3.658a.53.53 0 0 0 .393.288l4.052.575-2.906 2.77a.56.56 0 0 0-.163.506l.694 3.957-3.686-1.894a.5.5 0 0 0-.461 0z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
       
-      <button id="switchButton">Switch Bookmarkbar</button>
       
       
       <div id="message"></div>
