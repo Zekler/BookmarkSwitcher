@@ -1,5 +1,151 @@
 /* Complete popup.css (with star button on right of dropdown) */
-
+:root {
+  color-scheme: light;;
+  --bg-color: #333;
+  --color: #f9f9f9;
+  --h-color: #f9f9f9;
+  --message-color: #ccc;
+  --no-favorites-color: #aaa;
+  --favorites-button-bg: #555;
+  --favorites-button-color: #eee;
+  --favorites-button-hover-bg: #777;
+  --remove-favorite-button-color: hsl(0, 100%, 73%);
+  --remove-favorite-button-hover-color: #ffaaaa;
+  --btn-icon: var(--remove-favorite-button-color);
+  --dropdown-bg: #444;
+  --dropdown-color: #eee;
+  --dropdown-border: #777;
+  --dropdown-hover-bg: #555;
+  --dropdown-hover-color: #fff;
+  --dropdown-hover-border: #999;
+  --dropdown-focus-border: #66afe9;
+  --dropdown-focus-box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+  --btn-star: hsl(51, 55%, 51%);
+  --btn-switch: hsl(120, 45%,65%);
+  --bs-body-color: #212529;
+  --bs-btn-bg: transparent;
+  --bs-btn-box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.05);
+  --bs-btn-focus-box-shadow: 0 0 0 0.25rem
+    rgba(var(--bs-btn-focus-shadow-rgb), 0.5);
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-border-color: #242424;
+  --bs-btn-hover-border-color: transparent;
+  --btn-favorite-active: hsl(122, 39%, 29%);
+  --btn-favorite-active-border: hsl(123, 43%, 29%);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;;
+  --bg-color: #f9f9f9;
+  --color: #060606;
+  --h-color: #f9f9f9;
+  --message-color: #ccc;
+  --no-favorites-color: #aaa;
+  --favorites-button-bg: var(--bg-color);
+  --favorites-button-color: #050505;
+  --favorite-button-border: #242424;;
+  --favorites-button-hover-bg: #dbdbdb;
+  --remove-favorite-button-color: hsl(0, 100%, 73%);
+  --remove-favorite-button-hover-color: #ffaaaa;
+  --btn-icon: var(--remove-favorite-button-color);
+  --dropdown-bg: var(--bg-color);
+  --dropdown-color: #000000;
+  --dropdown-border: #777;
+  --dropdown-hover-bg: #d8d8d8;
+  --dropdown-hover-color: #fff;
+  --dropdown-hover-border: #999;
+  --dropdown-focus-border: #66afe9;
+  --dropdown-focus-box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+  --btn-star: hsl(51, 55%, 51%);
+  --btn-switch: hsl(120, 45%,65%);
+  --bs-body-color: #212529;
+  --bs-btn-bg: transparent;
+  --bs-btn-box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.05);
+  --bs-btn-focus-box-shadow: 0 0 0 0.25rem
+    rgba(var(--bs-btn-focus-shadow-rgb), 0.5);
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-border-color: #242424;
+  --bs-btn-hover-border-color: transparent;
+  --btn-favorite-active: hsl(122, 50%, 56%);
+  --btn-favorite-active-border: hsl(123, 47%, 55%);
+  }
+ 
+}
+body {
+  background-color: var(--bg-color);
+  color: var(--color);
+}
+h1,
+h2,
+h3 {
+  color: var(--h-color);
+}
+#message {
+  color: var(--message-color);
+}
+#no-favorites-message {
+  color: var(--no-favorites-color);
+}
+#favorites-list li button:first-child {
+  background-color: var(--favorites-button-bg);
+  color: var(--favorites-button-color);
+}
+#favorites-list li button:first-child:hover {
+  background-color: var(--favorites-button-hover-bg);
+}
+.btn.remove-favorite>svg{
+  color: var(--remove-favorite-button-color);
+ 
+}
+.btn.favorite-button {
+  border: 1px solid var(--favorite-button-border);
+}
+.dropdown {
+  border-color: var(--dropdown-bg);
+  background-color: var(--dropdown-bg);
+  color: var(--dropdown-color);
+  background-image: url('data:image/svg+xml;utf8,<svg fill="currentColor" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); /* Keep arrow icon URL */
+  background-repeat: no-repeat;
+  background-position-x: right;
+  background-position-y: center;
+}
+.dropdown:hover {
+  border-color: var(--dropdown-hover-border);
+}
+.dropdown:focus {
+  border-color: var(--dropdown-focus-border);
+  box-shadow: var(--dropdown-focus-box-shadow);
+}
+.dropdown option:hover {
+  background-color: var(--dropdown-hover-bg);
+  color: var(--dropdown-hover-color);
+}
+.btn-star {
+  --btn-icon: var(--btn-star);
+}
+.btn-switch {
+  --btn-icon: var(--btn-switch);
+}
+.btn {
+  border-color: var(--btn-icon);
+  &:hover {
+    background-color: var(--btn-icon);
+    & > svg {
+      color: var(--btn-hover-star);
+    }
+  }
+  & > svg {
+    color: var(--btn-icon);
+  }
+}
+button.btn.favorite-button.active-favorite {
+  background-color: var(--btn-favorite-active) !important; /* Example: Green background */
+  border: 2px solid var(--btn-favorite-active-border);
+}
+.custom-dropdown-option.active {
+background-color: var(--btn-favorite-active) !important; /* Example: Green background */
+border: 2px solid var(--btn-favorite-active-border);
+}
 /* Base CSS (Non-Color Properties - Layout, Structure, Font) */
 *,
 *::before,
@@ -202,7 +348,6 @@ button svg {
   flex-grow: 1;
   text-align: left;
   padding: 8px 12px;
-  border: none; /* Remove border */
   cursor: pointer;
   font-size: 1em; /* Keep font size here if it's the same in both modes */
   border-radius: 2px; /* Added border-radius: 2px */
@@ -220,115 +365,6 @@ button svg {
 
 #no-favorites-message {
   font-style: italic;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg-color: #333;
-    --color: #f9f9f9;
-    --h-color: #f9f9f9;
-    --message-color: #ccc;
-    --no-favorites-color: #aaa;
-    --favorites-button-bg: #555;
-    --favorites-button-color: #eee;
-    --favorites-button-hover-bg: #777;
-    --remove-favorite-button-color: hsl(0, 100%, 73%);
-    --remove-favorite-button-hover-color: #ffaaaa;
-    --btn-icon: var(--remove-favorite-button-color);
-    --dropdown-bg: #444;
-    --dropdown-color: #eee;
-    --dropdown-border: #777;
-    --dropdown-hover-bg: #555;
-    --dropdown-hover-color: #fff;
-    --dropdown-hover-border: #999;
-    --dropdown-focus-border: #66afe9;
-    --dropdown-focus-box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
-    --btn-star: hsl(51, 55%, 51%);
-    --btn-switch: hsl(120, 45%,65%);
-    --bs-body-color: #212529;
-    --bs-btn-bg: transparent;
-    --bs-btn-box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.05);
-    --bs-btn-focus-box-shadow: 0 0 0 0.25rem
-      rgba(var(--bs-btn-focus-shadow-rgb), 0.5);
-    --bs-btn-color: var(--bs-body-color);
-    --bs-btn-border-color: #242424;
-    --bs-btn-hover-border-color: transparent;
-    --btn-favorite-active: hsl(122, 39%, 29%);
-    --btn-favorite-active-border: hsl(123, 43%, 29%);
-  }
-  body {
-    background-color: var(--bg-color);
-    color: var(--color);
-  }
-  h1,
-  h2,
-  h3 {
-    color: var(--h-color);
-  }
-  #message {
-    color: var(--message-color);
-  }
-  #no-favorites-message {
-    color: var(--no-favorites-color);
-  }
-  #favorites-list li button:first-child {
-    background-color: var(--favorites-button-bg);
-    color: var(--favorites-button-color);
-  }
-  #favorites-list li button:first-child:hover {
-    background-color: var(--favorites-button-hover-bg);
-  }
-  .btn.remove-favorite>svg{
-    color: var(--remove-favorite-button-color);
-  }
-
-  .dropdown {
-    border-color: var(--dropdown-bg);
-    background-color: var(--dropdown-bg);
-    color: var(--dropdown-color);
-    background-image: url('data:image/svg+xml;utf8,<svg fill="currentColor" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); /* Keep arrow icon URL */
-    background-repeat: no-repeat;
-    background-position-x: right;
-    background-position-y: center;
-  }
-  .dropdown:hover {
-    border-color: var(--dropdown-hover-border);
-  }
-  .dropdown:focus {
-    border-color: var(--dropdown-focus-border);
-    box-shadow: var(--dropdown-focus-box-shadow);
-  }
-  .dropdown option:hover {
-    background-color: var(--dropdown-hover-bg);
-    color: var(--dropdown-hover-color);
-  }
-  .btn-star {
-    --btn-icon: var(--btn-star);
-  }
-  .btn-switch {
-    --btn-icon: var(--btn-switch);
-  }
-  .btn {
-    border-color: var(--btn-icon);
-    &:hover {
-      background-color: var(--btn-icon);
-      & > svg {
-        color: var(--btn-hover-star);
-      }
-    }
-    & > svg {
-      color: var(--btn-icon);
-    }
-  }
-  button.btn.favorite-button.active-favorite {
-    background-color: var(--btn-favorite-active) !important; /* Example: Green background */
-    border: 2px solid var(--btn-favorite-active-border);
-}
-.custom-dropdown-option.active {
-  background-color: var(--btn-favorite-active) !important; /* Example: Green background */
-  border: 2px solid var(--btn-favorite-active-border);
-}
 }
 
 /* Custom Dropdown Styles */
