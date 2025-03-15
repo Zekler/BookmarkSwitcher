@@ -31,7 +31,7 @@ async function switchBookmarks(targetFolderId, sendResponse) {
         targetFolderId
     );
 
-    chrome.storage.local.get(["selectedFolderId"], async function (result) {
+    chrome.storage.sync.get(["selectedFolderId"], async function (result) {
         let currentFolderId = result.selectedFolderId;
         console.log(
             "    - Retrieved currentFolderId from storage:",
@@ -356,7 +356,7 @@ function getBookmarksInFolder(folderId) {
 
 function setSelectedFolderId(folderId) {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.set({ selectedFolderId: folderId }, resolve);
+    chrome.storage.sync.set({ selectedFolderId: folderId }, resolve);
   });
 }
 
