@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Start traversing from the "Other Bookmarks" folder (ID: '2')
         traverseBookmarks('2', dropdownOptions);
     
-        chrome.storage.local.get(['selectedFolderId', 'favorites'], function(result) {
+        chrome.storage.sync.get(['selectedFolderId', 'favorites'], function(result) {
             if (result.selectedFolderId) {
                 folderSelect.value = result.selectedFolderId;
                 const selectedOption = Array.from(dropdownOptions.querySelectorAll('.custom-dropdown-option')).find(opt => opt.dataset.value === result.selectedFolderId);
@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Populate Favorites List ---
     function populateFavoritesList() {
-        chrome.storage.local.get(['favorites'], function(result) {
+        chrome.storage.sync.get(['favorites'], function(result) {
             const favorites = result.favorites || []; // Provide an empty array as a default
             favoritesList.innerHTML = '';
             if (favorites.length === 0) {
@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             target.classList.add('selected');
 
-            chrome.storage.local.get(['favorites'], function(result) {
+            chrome.storage.sync.get(['favorites'], function(result) {
                 updateStarIcon(value, result.favorites || []);
             });
         }
@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         document.querySelectorAll('.custom-dropdown-option').forEach(option => option.classList.remove('selected'));
                         selectedOption.classList.add('selected');
                     }
-                    chrome.storage.local.get(['favorites'], function(result) {
+                    chrome.storage.sync.get(['favorites'], function(result) {
                         updateStarIcon(folderId, result.favorites || []);
                         setActiveFavorite(folderId);
                     });
@@ -166,12 +166,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const removeFavoriteButton = target.closest('.remove-favorite');
         if (removeFavoriteButton) {
             const folderId = removeFavoriteButton.dataset.folderId;
-            chrome.storage.local.get(['favorites'], function(result) {
+            chrome.storage.sync.get(['favorites'], function(result) {
                 let favorites = result.favorites || [];
                 favorites = favorites.filter(fav => fav.folderId !== folderId);
-                chrome.storage.local.set({ favorites: favorites }, function() {
+                chrome.storage.sync.set({ favorites: favorites }, function() {
                     populateFavoritesList();
-                    chrome.storage.local.get(['selectedFolderId'], function(result) {
+                    chrome.storage.sync.get(['selectedFolderId'], function(result) {
                         updateStarIcon(result.selectedFolderId, favorites);
                     });
                 });
@@ -201,7 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.bookmarks.get(folderId, function(folder) {
             if (folder && folder.length > 0) { // Check if folder exists
                 const folderName = folder[0].title;
-                chrome.storage.local.get(['favorites'], function(result) {
+                chrome.storage.sync.get(['favorites'], function(result) {
                     let favorites = result.favorites || [];
                     const isFavorited = favorites.some(fav => fav.folderId === folderId);
                     if (isFavorited) {
@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     } else {
                         favorites.push({ folderId: folderId, folderName: folderName });
                     }
-                    chrome.storage.local.set({ favorites: favorites }, function() {
+                    chrome.storage.sync.set({ favorites: favorites }, function() {
                         populateFavoritesList();
                         updateStarIcon(folderId, favorites);
                     });
@@ -238,7 +238,7 @@ document.addEventListener('DOMContentLoaded', function() {
     populateFolderDropdown();
     populateFavoritesList();
         // --- Call this function when the popup is loaded (e.g., in your popup.js onload event) ---
-        chrome.storage.local.get(['selectedFolderId'], function(result) {
+        chrome.storage.sync.get(['selectedFolderId'], function(result) {
             const selectedFolderId = result.selectedFolderId;
             if (selectedFolderId) {
                 setActiveFavorite(selectedFolderId);
