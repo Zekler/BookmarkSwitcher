@@ -1,4 +1,12 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    chrome.storage.onChanged.addListener(function(changes, areaName) {
+        if (areaName === 'local' && changes.selectedFolder) {
+            const updatedSelectedFolder = changes.selectedFolder.newValue;
+            if (updatedSelectedFolder && updatedSelectedFolder.id) {
+                setActiveFolderById(updatedSelectedFolder.id);
+            }
+        }
+    });
     // --- Variables ---
     const switchButton = document.getElementById('switchButton');
     const saveFolderButtonIcon = document.getElementById('saveFolderButtonIcon');
@@ -16,19 +24,34 @@ document.addEventListener('DOMContentLoaded', function() {
             messageDiv.className = '';
         }, 3000);
     }
-
-    function updateStarIcon(selectedFolderId, favorites) {
-        const starSvg = saveFolderButtonIcon.querySelector('svg');
-        const isFavorited = favorites.some(fav => fav.folderId === selectedFolderId);
-
-        if (isFavorited) {
-            starSvg.innerHTML = '<path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>';
-            starSvg.setAttribute('class', 'bi bi-star-fill');
-        } else {
-            starSvg.innerHTML = '<path d="M2.866 14.85c-.078.444.36.791.746.593l4.39-2.256 4.389 2.256c.386.198.824-.149.746-.592l-.83-4.73 3.522-3.356c.33-.314.16-.888-.282-.95l-4.898-.696L8.465.792a.513.513 0 0 0-.927 0L5.354 5.12l-4.898.696c-.441.062-.612.636-.283.95l3.523 3.356-.83 4.73zm4.905-2.767-3.686 1.894.694-3.957a.56.56 0 0 0-.163-.505L1.71 6.745l4.052-.576a.53.53 0 0 0 .393-.288L8 2.223l1.847 3.658a.53.53 0 0 0 .393.288l4.052.575-2.906 2.77a.56.56 0 0 0-.163.506l.694 3.957-3.686-1.894a.5.5 0 0 0-.461 0z"/>';
-            starSvg.setAttribute('class', 'bi bi-star');
+    // --- Update Star Icon ---
+    async function updateStarIcon() {
+        try {
+            const selectedDropdownOption = document.querySelector('.custom-dropdown-option.selected');
+            const starSvg = saveFolderButtonIcon.querySelector('svg');
+            let isStarred = false; // Initialize to false
+    
+            if (selectedDropdownOption) {
+                const selectedFolderId = selectedDropdownOption.dataset.value;
+                const localResult = await chrome.storage.local.get({ favorites: [] });
+                const localFavorites = localResult.favorites;
+    
+                isStarred = localFavorites && localFavorites.some(fav => fav.id === selectedFolderId);
+            }
+    
+            if (isStarred) {
+                starSvg.innerHTML = '<path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>';
+                starSvg.setAttribute('class', 'bi bi-star-fill');
+            } else {
+                starSvg.innerHTML = '<path d="M2.866 14.85c-.078.444.36.791.746.593l4.39-2.256 4.389 2.256c.386.198.824-.149.746-.592l-.83-4.73 3.522-3.356c.33-.314.16-.888-.282-.95l-4.898-.696L8.465.792a.513.513 0 0 0-.927 0L5.354 5.12l-4.898.696c-.441.062-.612.636-.283.95l3.523 3.356-.83 4.73zm4.905-2.767-3.686 1.894.694-3.957a.56.56 0 0 0-.163-.505L1.71 6.745l4.052-.576a.53.53 0 0 0 .393-.288L8 2.223l1.847 3.658a.53.53 0 0 0 .393.288l4.052.575-2.906 2.77a.56.56 0 0 0-.163.506l.694 3.957-3.686-1.894a.5.5 0 0 0-.461 0z"/>';
+                starSvg.setAttribute('class', 'bi bi-star');
+            }
+    
+        } catch (error) {
+            console.error("Error updating star icon:", error);
         }
     }
+    // --- Populate Folder Dropdown ---
     function populateFolderDropdown() {
         const dropdownOptions = document.querySelector('.custom-dropdown-options');
         const defaultDropDownOption = document.getElementById('defaultDropDownOption');
@@ -65,44 +88,58 @@ document.addEventListener('DOMContentLoaded', function() {
     
         // Start traversing from the "Other Bookmarks" folder (ID: '2')
         traverseBookmarks('2', dropdownOptions);
+
+    }
+    // --- Populate Favorites List ---
+    async function populateFavoritesList() {
+        const localResult = await chrome.storage.local.get({ favorites: [] });
+        const localFavorites = localResult.favorites;
     
-        chrome.storage.sync.get(['selectedFolderId', 'favorites'], function(result) {
-            if (result.selectedFolderId) {
-                folderSelect.value = result.selectedFolderId;
-                const selectedOption = Array.from(dropdownOptions.querySelectorAll('.custom-dropdown-option')).find(opt => opt.dataset.value === result.selectedFolderId);
-                if (selectedOption) {
-                    selectedSpan.textContent = selectedOption.textContent;
-                    selectedOption.classList.add('selected');
+        favoritesList.innerHTML = '';
+        if (localFavorites.length === 0) {
+            noFavoritesMessage.style.display = 'block';
+        } else {
+            noFavoritesMessage.style.display = 'none';
+            for (let i = 0; i < localFavorites.length; i++) {
+                const localFavorite = localFavorites[i];
+                try {
+                    const folder = await new Promise((resolve) => {
+                        chrome.bookmarks.get(localFavorite.id, (folder) => {
+                            resolve(folder);
+                        });
+                    });
+                    if (folder && folder.length > 0) {
+                        const listItem = document.createElement('li');
+                        listItem.innerHTML = `
+                            <button class="btn favorite-button" data-folderid="${localFavorite.id}">${folder[0].title}</button>
+                            <button class="btn remove-favorite" data-folderid="${localFavorite.id}"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-lg" viewBox="0 0 16 16">
+                                <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8 8.707l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>
+                            </svg></button>
+                        `;
+                        favoritesList.appendChild(listItem);
+                    }
+                } catch (error) {
+                    console.error("Error retrieving folder:", error);
                 }
             }
-            updateStarIcon(result.selectedFolderId, result.favorites || []);
-        });
+        }
     }
-
-    // --- Populate Favorites List ---
-    function populateFavoritesList() {
-        chrome.storage.sync.get(['favorites'], function(result) {
-            const favorites = result.favorites || []; // Provide an empty array as a default
-            favoritesList.innerHTML = '';
-            if (favorites.length === 0) {
-                noFavoritesMessage.style.display = 'block';
-            } else {
-                noFavoritesMessage.style.display = 'none';
-                favorites.forEach(fav => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `
-                        <button class="btn favorite-button" data-folder-id="${fav.folderId}">${fav.folderName}</button>
-                        <button class="btn remove-favorite" data-folder-id="${fav.folderId}"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-lg" viewBox="0 0 16 16">
-  <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>
-</svg></button>
-                    `;
-                    favoritesList.appendChild(li);
-                });
+    // --- Initialize Selected Folder ---
+    async function initializeSelectedFolder() {
+        try {
+            const localResult = await chrome.storage.local.get({ selectedFolder: null });
+            const localSelectedFolder = localResult.selectedFolder;
+    
+            if (localSelectedFolder && localSelectedFolder.id) {
+                await setActiveFolderById(localSelectedFolder.id);
             }
-        });
+    
+        } catch (error) {
+            console.error("Error initializing selected folder:", error);
+        }
     }
      // --- Event Listeners ---
-     document.addEventListener('click', function(event) {
+     document.addEventListener('click', async function(event) {
         const dropdown = document.querySelector('.custom-dropdown');
         const dropdownOptions = document.querySelector('.custom-dropdown-options');
         const dropdownTrigger = document.querySelector('.custom-dropdown-trigger');
@@ -126,59 +163,62 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             target.classList.add('selected');
 
-            chrome.storage.sync.get(['favorites'], function(result) {
-                updateStarIcon(value, result.favorites || []);
-            });
+            updateStarIcon();
         }
-
+        
         if (target.classList.contains('favorite-button')) {
-            const folderId = target.dataset.folderId;
-            folderSelect.value = folderId;
-            chrome.bookmarks.get(folderId, function(folder) {
-                if (chrome.runtime.lastError) {
-                    console.error("Error in chrome.bookmarks.get:", chrome.runtime.lastError.message);
-                    displayMessage("Error retrieving folder information.", true);
-                    return;
-                }
-                if (folder && folder[0]) {
-                    document.querySelector('.custom-dropdown-trigger span').textContent = folder[0].title;
-                    const selectedOption = document.querySelector(`.custom-dropdown-option[data-value="${folderId}"]`);
-                    if (selectedOption) {
-                        document.querySelectorAll('.custom-dropdown-option').forEach(option => option.classList.remove('selected'));
-                        selectedOption.classList.add('selected');
+            const folderId = event.target.dataset.folderid;
+            try {
+                chrome.runtime.sendMessage({
+                    action: "switchBookmarks",
+                    folderId: folderId
+                }, async (response) => {
+                    console.log("removeResponse: ", response);
+                    if (!response) {
+                        console.error("Error removing favorites: No response received.");
+                        return; // Exit early
                     }
-                    chrome.storage.sync.get(['favorites'], function(result) {
-                        updateStarIcon(folderId, result.favorites || []);
-                        setActiveFavorite(folderId);
-                    });
-                    chrome.runtime.sendMessage({ action: "switchBookmarks", folderId: folderId }, function(response) {
-                        if (response && response.success) {
-                            displayMessage("Bookmarks switched successfully!");
-                        } else if (response && response.error) {
-                            displayMessage(response.error, true);
-                        } else {
-                            displayMessage("An unknown error occurred.", true);
-                        }
-                    });
-                }
-            });
+                    
+                    if (response.success) {
+                        await setActiveFolderById(folderId);
+                    } else {
+                        console.error("Error removing favorites:", response.error);
+                    }
+                });
+    
+            } catch (error) {
+                console.error("Error handling favorite button click:", error);
+                displayMessage("An error occurred.", true);
+            }
         }
         const removeFavoriteButton = target.closest('.remove-favorite');
         if (removeFavoriteButton) {
-            const folderId = removeFavoriteButton.dataset.folderId;
-            chrome.storage.sync.get(['favorites'], function(result) {
-                let favorites = result.favorites || [];
-                favorites = favorites.filter(fav => fav.folderId !== folderId);
-                chrome.storage.sync.set({ favorites: favorites }, function() {
-                    populateFavoritesList();
-                    chrome.storage.sync.get(['selectedFolderId'], function(result) {
-                        updateStarIcon(result.selectedFolderId, favorites);
-                    });
+            const folderId = removeFavoriteButton.dataset.folderid;
+            try {
+                chrome.runtime.sendMessage({
+                    action: "removeFavorite",
+                    folderId: folderId
+                }, (response) => {
+                    console.log("removeResponse: ", response);
+                    if (!response) {
+                        console.error("Error removing favorites: No response received.");
+                        return; // Exit early
+                    }
+                    
+                    if (response.success) {
+                        populateFavoritesList();
+                        updateStarIcon();
+                    } else {
+                        console.error("Error removing favorites:", response.error);
+                    }
                 });
-            });
+            } catch (error) {
+                console.error("Error removing favorite:", error);
+                displayMessage("An error occurred while removing.", true);
+            }
         }
     });
-
+   
     switchButton.addEventListener('click', function() {
         const folderId = folderSelect.value;
         if (!folderId || folderId === "0") {
@@ -188,6 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.runtime.sendMessage({ action: "switchBookmarks", folderId: folderId }, function(response) {
             if (response && response.success) {
                 displayMessage("Bookmarks switched successfully!");
+                setActiveFolderById(folderId);
             } else if (response && response.error) {
                 displayMessage(response.error, true);
             } else {
@@ -196,53 +237,64 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    saveFolderButtonIcon.addEventListener('click', function() {
+    saveFolderButtonIcon.addEventListener('click', async function() {
         const folderId = folderSelect.value;
-        chrome.bookmarks.get(folderId, function(folder) {
-            if (folder && folder.length > 0) { // Check if folder exists
-                const folderName = folder[0].title;
-                chrome.storage.sync.get(['favorites'], function(result) {
-                    let favorites = result.favorites || [];
-                    const isFavorited = favorites.some(fav => fav.folderId === folderId);
-                    if (isFavorited) {
-                        favorites = favorites.filter(fav => fav.folderId !== folderId);
-                    } else {
-                        favorites.push({ folderId: folderId, folderName: folderName });
-                    }
-                    chrome.storage.sync.set({ favorites: favorites }, function() {
-                        populateFavoritesList();
-                        updateStarIcon(folderId, favorites);
-                    });
-                });
-            } else {
-                displayMessage("Folder not found.",true);
-            }
-        });
-    });
-    // --- Add this function to your popup.js to set the initial active state ---
-    function setActiveFavorite(folderId) {
-        document.querySelectorAll('.favorite-button').forEach(btn => btn.classList.remove('active-favorite'));
-        const activeFavButton = document.querySelector(`.favorite-button[data-folder-id="${folderId}"]`);
-        if (activeFavButton) {
-            activeFavButton.classList.add('active-favorite');
+        if (!folderId || folderId === "0") {
+            displayMessage("Please select a valid folder.", true);
+            return;
         }
-        document.querySelectorAll('.custom-dropdown-option').forEach(btn => btn.classList.remove('active'));
-        const activeDDButton = document.querySelector(`.custom-dropdown-option[data-value="${folderId}"]`);
-        if (activeDDButton) {
-            activeDDButton.classList.add('active');
+    
+        try {
+            const folder = await new Promise((resolve) => {
+                chrome.bookmarks.get(folderId, (folder) => {
+                    resolve(folder);
+                });
+            });
+            const folderName = folder[0].title;
+            const index = folder[0].index;
+    
+            await chrome.runtime.sendMessage({
+                action: "setFavorites",
+                name: folderName,
+                index: index,
+                folderId: folderId,
+            }, (response) => {
+                if (!response) {
+                    console.error("Error setting favorites: No response received.");
+                    return; // Exit early
+                }
+                
+                if (response.success) {
+                    populateFavoritesList();
+                    updateStarIcon();
+                } else {
+                    console.error("Error setting favorites:", response.error);
+                }
+            });
+        } catch (error) {
+            console.error("Error saving favorite:", error);
+            displayMessage("An error occurred while saving.", true);
+        }
+    });
+
+    async function setActiveFolderById(folderId) {
+        try {
+            document.querySelectorAll('.active-favorite, .active').forEach(el => el.classList.remove('active-favorite', 'active'));
+            const activeFavButton = document.querySelector(`.favorite-button[data-folderid="${folderId}"]`);
+            const activeDropDownOption = document.querySelector(`.custom-dropdown-option[data-value="${folderId}"]`);
+            if (activeFavButton) {
+                activeFavButton.classList.add('active-favorite');
+            }
+            if (activeDropDownOption){
+                activeDropDownOption.classList.add('active');
+            }
+        } catch (error) {
+            console.error("Error setting active favorite:", error);
+            displayMessage("An error occurred.", true);
         }
     }
-
-
     // --- Initial Population ---
     populateFolderDropdown();
-    populateFavoritesList();
-        // --- Call this function when the popup is loaded (e.g., in your popup.js onload event) ---
-        chrome.storage.sync.get(['selectedFolderId'], function(result) {
-            const selectedFolderId = result.selectedFolderId;
-            if (selectedFolderId) {
-                setActiveFavorite(selectedFolderId);
-            }
-        });
-    
+    await populateFavoritesList();
+    await initializeSelectedFolder();
 });

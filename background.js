@@ -1,184 +1,238 @@
+///// STARTUP AND INSTALLATION LOGIC /////
+chrome.runtime.onStartup.addListener(() => {
+  validateFavorites();
+});
+chrome.runtime.onInstalled.addListener(() => {
+  initializeUuidMappings();
+  initializeFavorites();
+  initializeSelectedFolder();
+  validateFavorites();
+});
+////// MESSAGE HANDLING //////
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  if (request.action === "switchBookmarks") {
-    const targetFolderId = request.folderId;
-    console.log(
-      "Message received: switchBookmarks to folderId:",
-      targetFolderId
-    );
-    // Make the callback async and await switchBookmarks
-    (async () => {
-        await switchBookmarks(targetFolderId, sendResponse);
-    })();
-    return true; // Indicate we will send response asynchronously
+  (async (request, sender, sendResponse) => {
+  try {
+      switch (request.action) {
+          case "switchBookmarks":
+              const targetFolderId = request.folderId;
+              console.log("Message received: switchBookmarks to folderId:", targetFolderId);
+              await switchBookmarks(targetFolderId, sendResponse);
+              return true;
+          case "switchBookmarksFromFavorite":
+              const uuid = await getUuidFromFolderId(request.folderId);
+              if (uuid) {
+                  await switchBookmarksFromFavorite(uuid, sendResponse);
+              } else {
+                  sendResponse({ success: false, error: "UUID not found for folderId." });
+              }
+              return true;
+          case "setFavorites":
+            try {
+              await setFavoritesFromPopup(request.name, request.index, request.folderId, sendResponse);
+            } catch (error) {
+                sendResponse({ success: false, error: error.message });
+            }
+            break;
+          case "removeFavorite":
+              const removeUuid = await getUuidFromFolderId(request.folderId);
+              console.log("removeStart: ");
+              if (removeUuid) {
+                try {
+                    await removeFavorite(removeUuid);
+                    console.log("removeSendResponse: ");
+                    sendResponse({ success: true, message: "removeFavorite completed" });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+              } else {
+                  sendResponse({ success: false, error: "UUID not found for folderId." });
+                  console.warn(`UUID not found for folderId: ${request.folderId}`);
+              }
+              break;
+          default:
+              console.warn("Unknown message action:", request.action);
+      }
+  } catch (error) {
+      console.error("Error handling message:", error);
+      if (sendResponse) {
+          sendResponse({ success: false, error: "An error occurred." });
+      }
+  }
+  })(request, sender, sendResponse); // Invoke the async function with arguments
+  return true; // Indicate async response for cases that use sendResponse
+});
+///// STORAGE EVENT LISTENERS /////
+chrome.storage.onChanged.addListener((changes, areaName, sender) => {
+  if (areaName === "sync" && sender && sender.id !== chrome.runtime.id) {
+    try {
+      if (changes.favorites) {
+        initializeUuidMappings();
+        synchronizeFavorites();
+      }
+      if (changes.selectedFolder) {
+        initializeUuidMappings();
+        synchronizeSelectedFolder();
+      }
+    } catch (error) {
+        console.error("Error handling sync storage change:", error);
+    }
   }
 });
-async function isValidBookmarkId(id) {
-    return new Promise((resolve) => {
-        chrome.bookmarks.get(id, (node) => {
-            if (chrome.runtime.lastError) {
-                // Log the error for debugging purposes
-                // console.warn("Error checking bookmark ID:", id, chrome.runtime.lastError.message);
-                resolve(false); // Resolve with false in case of an error
-                return;
-            }
-            resolve(!!node); // Resolve with true if node exists, false otherwise
+///// BOOKMARK EVENT LISTENERS /////
+chrome.bookmarks.onChanged.addListener((folderId, changeInfo) => {
+  chrome.storage.local.get({ uuidMappings: {} }, (localResult) => {
+    const uuidMappings = localResult.uuidMappings;
+    const uuid = Object.keys(uuidMappings).find(
+      (key) => uuidMappings[key] === folderId
+    );
+    if (uuid) {
+      chrome.storage.sync.get({ favorites: [] }, (syncResult) => {
+        const favorites = syncResult.favorites.map((fav) => {
+          if (fav.uuid === uuid) {
+            fav.name = changeInfo.title;
+          }
+          return fav;
         });
-    });
+        chrome.storage.sync.set({ favorites });
+      });
+    }
+  });
+});
+chrome.bookmarks.onRemoved.addListener((folderId, removeInfo) => {
+  chrome.storage.local.get({ uuidMappings: {} }, (localResult) => {
+    let uuidMappings = localResult.uuidMappings;
+    const uuid = Object.keys(uuidMappings).find(
+      (key) => uuidMappings[key] === folderId
+    );
+    if (uuid) {
+      delete uuidMappings[uuid];
+      chrome.storage.local.set({ uuidMappings: uuidMappings });
+      chrome.storage.sync.get({ favorites: [] }, (syncResult) => {
+        let favorites = syncResult.favorites;
+        favorites = favorites.filter((fav) => fav.uuid !== uuid);
+        chrome.storage.sync.set({ favorites: favorites });
+      });
+    }
+  });
+});
+
+///// BOOKMARK SWITCHING /////
+async function switchBookmarksFromFavorite(uuid, sendResponse) {
+  try {
+      const localResult = await chrome.storage.local.get({ uuidMappings: {} });
+      const uuidMappings = localResult.uuidMappings;
+      let folderId = uuidMappings[uuid];
+
+      if (!folderId) {
+          const syncResult = await chrome.storage.sync.get({ favorites: [] });
+          const favorite = syncResult.favorites.find(fav => fav.uuid === uuid);
+
+          if (favorite) {
+              const children = await new Promise((resolve) => {
+                  chrome.bookmarks.getChildren('2', resolve);
+              });
+              const foundFolder = children.find(child => child.title === favorite.name && child.index === favorite.index);
+
+              if (foundFolder) {
+                  folderId = foundFolder.id;
+                  await updateUuidMapping(uuid, folderId); // Update mappings in background
+              } else {
+                  sendResponse({ success: false, error: 'Folder not found' });
+                  return;
+              }
+          }
+      }
+
+      if (folderId) {
+          await switchBookmarks(folderId, sendResponse); // Use your existing switchBookmarks logic
+          await sendMessageToPopup({action: 'setActiveFavorite', uuid: uuid});
+      } else {
+          sendResponse({ success: false, error: 'Folder ID not found' });
+      }
+  } catch (error) {
+      console.error("Error in switchBookmarksFromFavorite:", error);
+      sendResponse({ success: false, error: "An error occurred." });
+  }
 }
 async function switchBookmarks(targetFolderId, sendResponse) {
-    console.log(
-        "switchBookmarks function started, targetFolderId:",
-        targetFolderId
-    );
+  console.log("switchBookmarks function started, targetFolderId:", targetFolderId);
 
-    chrome.storage.sync.get(["selectedFolderId"], async function (result) {
-        let currentFolderId = result.selectedFolderId;
-        console.log(
-            "    - Retrieved currentFolderId from storage:",
-            currentFolderId
-        );
-         // Fetch bookmarks from the Bookmarks Bar and the current folder concurrently
-         const bookmarkBarBookmarks = await new Promise((resolve) => {
-            chrome.bookmarks.getChildren("1", resolve);
-        });
+  try {
+      const currentFolderId = await ensureCurrentFolder();
+      const [bookmarkBarBookmarks, currentFolderBookmarks] = await fetchBookmarks(currentFolderId);
 
-        // 1. Check if currentFolderId exists in storage & Check if the Bookmark Bar has bookmarks
-        if ((!currentFolderId || !(await isValidBookmarkId(currentFolderId))) && bookmarkBarBookmarks && bookmarkBarBookmarks.length > 0) {
-            console.log("    - Bookmark Bar is not empty. Creating new folder.");
-            currentFolderId = await createNewBookmarkFolder();
+      if (currentFolderId) {
+          await updateBackupFolder(currentFolderId, bookmarkBarBookmarks, currentFolderBookmarks);
+      }
 
-            // 1.2 Check if folder creation was successful
-            if (!currentFolderId) {
-                sendResponse({ success: false, error: "Error creating previous folder." });
-                return;
-            }
-        } else {
-            console.log("    - Bookmark Bar is empty. Proceeding with null folder.");
-            currentFolderId = null;
-        }
+      await performSwitchAndRespond(targetFolderId, sendResponse);
 
-        // 2. Check if the targetFolderId exists
-        chrome.bookmarks.get(targetFolderId, function (targetFolderNode) {
-            if (chrome.runtime.lastError || !targetFolderNode) {
-                console.error("Target folder not found:", targetFolderId);
-                sendResponse({ success: false, error: "Target folder not found." });
-                return;
-            }
-
-            // 3. Fetch bookmarks from the Bookmarks Bar and the currentFolderId
-            Promise.all([
-                getBookmarksInFolder("1"),
-                currentFolderId ? getBookmarksInFolder(currentFolderId) : Promise.resolve([]),
-            ])
-            .then(([bookmarkBarBookmarks, currentFolderBookmarks]) => {
-                console.log(
-                    "    - Fetched Bookmarks - Bookmark Bar:",
-                    bookmarkBarBookmarks
-                );
-                console.log(
-                    "    - Fetched Bookmarks - Current Folder:",
-                    currentFolderBookmarks
-                );
-
-                // 4. Check if currentFolderId is null (empty bookmark bar case)
-                if (!currentFolderId) {
-                    // 4.1 If currentFolderId is null, proceed directly to switch
-                    performSwitch(targetFolderId, sendResponse, null);
-                    return;
-                }
-
-                // 5. If currentFolderId is not null, update the backup folder
-                updateFolderBookmarks(
-                    currentFolderId,
-                    bookmarkBarBookmarks,
-                    currentFolderBookmarks
-                )
-                    .then(() => {
-                        console.log("    - updateFolderBookmarks completed successfully.");
-                        // 5.1 Proceed to switch
-                        performSwitch(targetFolderId, sendResponse, currentFolderId);
-                    })
-                    .catch((error) => {
-                        console.error("    - Error in updateFolderBookmarks:", error);
-                        sendResponse({
-                            success: false,
-                            error: "Error updating folder bookmarks.",
-                        });
-                    });
-            })
-            .catch(async (error) => {
-                // 6. Handle errors during bookmark fetching
-                console.error("    - Error fetching bookmarks before update:", error);
-                console.error(
-                    "    - Attempting to save current bookmark bar to a new folder due to fetch error..."
-                );
-
-                try {
-                    const newFolderId = await createNewBookmarkFolder();
-                    console.log(
-                        `    - Bookmark bar saved to new folder with ID: "${newFolderId}"`
-                    );
-                    sendResponse({
-                        success: false,
-                        error: `Error fetching bookmarks for update. Current Bookmark Bar saved to new folder with ID: "${newFolderId}"`,
-                    });
-                } catch (saveError) {
-                    console.error("    - Failed to save bookmark bar:", saveError);
-                    sendResponse({
-                        success: false,
-                        error:
-                            "Error fetching bookmarks for update AND failed to save current bookmark bar!",
-                    });
-                }
-            });
-        });
-    });
+  } catch (error) {
+      console.error("Error during bookmark switch:", error);
+      sendResponse({ success: false, error: "Error during bookmark switch." });
+  }
 }
-function performSwitch(targetFolderId, sendResponse, previousFolderId) {
-  console.log(
-    "performSwitch function started, targetFolderId:",
-    targetFolderId,
-    "previousFolderId:",
-    previousFolderId
-  );
+async function updateBackupFolder(currentFolderId, bookmarkBarBookmarks, currentFolderBookmarks) {
+  try {
+      await updateFolderBookmarks(currentFolderId, bookmarkBarBookmarks, currentFolderBookmarks);
+      console.log("updateFolderBookmarks completed successfully.");
+  } catch (error) {
+      console.error("Error in updateFolderBookmarks:", error);
+      throw error; // Propagate the error
+  }
+}
+async function performSwitchAndRespond(targetFolderId, sendResponse) {
+  try {
+      await performSwitch(targetFolderId, sendResponse);
+      sendResponse({ success: true });
+  } catch (error) {
+      console.error("Error during performSwitch:", error);
+      sendResponse({ success: false, error: "Error during bookmark switch." });
+  }
+}
+async function performSwitch(targetFolderId, sendResponse) {
+  console.log("performSwitch started, targetFolderId:", targetFolderId);
+  try {
+    const targetFolderNode = await new Promise((resolve) => {
+      chrome.bookmarks.get(targetFolderId, (node) => {
+          if (chrome.runtime.lastError) {
+              console.error(
+                  "Error getting bookmark for targetFolderId:",
+                  targetFolderId,
+                  chrome.runtime.lastError
+              );
+              resolve(null); // Resolve with null to handle the error
+          } else {
+              resolve(node);
+          }
+      });
+  });
 
-  chrome.bookmarks.get(targetFolderId, function (targetFolderNode) {
-    if (chrome.runtime.lastError || !targetFolderNode) {
+    if (!targetFolderNode) {
       console.error("Target folder not found:", targetFolderId);
       sendResponse({ success: false, error: "Target folder not found." });
       return;
     }
-    clearBookmarks("1")
-      .then(() => {
-        console.log("   - clearBookmarksBar completed.");
-        return copyBookmarks(targetFolderId, "1");
-      })
-      .then(() => {
-        console.log("   - copyBookmarksToBar completed.");
-        return setSelectedFolderId(targetFolderId);
-      })
-      .then(() => {
-        console.log(
-          "   - setSelectedFolderId completed, new selectedFolderId:",
-          targetFolderId
-        );
-        console.log(
-          "Bookmarks switched successfully to folder ID:",
-          targetFolderId
-        );
-        sendResponse({ success: true });
-      })
-      .catch((error) => {
-        console.error("Error during bookmark switch in performSwitch:", error);
-        console.error(error);
-        sendResponse({
-          success: false,
-          error: "Error during bookmark switch.",
-        });
-      });
-  });
+    const folderName = targetFolderNode[0].title;
+    const index = targetFolderNode[0].index;
+
+    await clearBookmarks("1");
+    await copyBookmarks(targetFolderId, "1");
+    await setSelectedFolder(targetFolderId, folderName, index); 
+
+    console.log("Bookmarks switched successfully to folder ID:", targetFolderId);
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error("Error during bookmark switch in performSwitch:", error);
+    console.error(error);
+    sendResponse({
+      success: false,
+      error: "Error during bookmark switch.",
+    });
+  }
 }
 
+///// BOOKMARK MANIPULATION /////
 function clearBookmarks(folderId) {
   return new Promise((resolve, reject) => {
     chrome.bookmarks.getChildren(folderId, (children) => {
@@ -206,7 +260,6 @@ function clearBookmarks(folderId) {
     });
   });
 }
-
 function copyBookmarks(fromFolderId, toFolderId) {
   return new Promise((resolve, reject) => {
     chrome.bookmarks.getChildren(fromFolderId, (bookmarks) => {
@@ -230,7 +283,6 @@ function copyBookmarks(fromFolderId, toFolderId) {
     });
   });
 }
-
 function createBookmark(parentId, bookmark, resolve) {
   let bookmarkProperties = {
     parentId: parentId,
@@ -308,58 +360,50 @@ function createBookmark(parentId, bookmark, resolve) {
     });
   }
 }
-function getBookmarksInFolder(folderId) {
-  return new Promise((resolve, reject) => {
-    let bookmarks = [];
+async function getBookmarksInFolder(folderId) {
+  return new Promise(async (resolve, reject) => {
+      let bookmarks = [];
 
-    function traverseBookmarks(node) {
-      if (node.url) {
-        // It's a bookmark
-        bookmarks.push({
-          id: node.id,
-          url: node.url,
-          title: node.title,
-        });
-      } else {
-        // It's a folder
-        chrome.bookmarks.getChildren(node.id, (children) => {
-          if (chrome.runtime.lastError) {
-            console.warn(
-              "Bookmark not found:",
-              node.id,
-              chrome.runtime.lastError.message
-            );
-            return;
+      async function traverseBookmarks(node) {
+          if (node.url) {
+              // It's a bookmark
+              bookmarks.push({
+                  id: node.id,
+                  url: node.url,
+                  title: node.title,
+              });
+          } else {
+              // It's a folder
+              try {
+                  const children = await new Promise((resolveChildren) => {
+                      chrome.bookmarks.getChildren(node.id, resolveChildren);
+                  });
+                  if (children && children.length > 0) {
+                      for (const child of children) {
+                          await traverseBookmarks(child); // Recursively traverse children
+                      }
+                  }
+              } catch (error) {
+                  console.warn("Bookmark not found:", node.id, error.message);
+              }
           }
-          if (children && children.length > 0) {
-            children.forEach(traverseBookmarks); // Recursively traverse children
-          }
-        });
-      }
-    }
-
-    chrome.bookmarks.getChildren(folderId, function (children) {
-      if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
-        return;
       }
 
-      children.forEach(traverseBookmarks);
-      //Since the traverseBookmarks function is asynchronous, we need to wait for all the children to be processed.
-      //We can do this by using a promise.
-      //This is a bit more complex, and in this case, the current code will work.
-      //However, if you are experiencing issues with the get function, then we can add a promise to the traverseBookmarks function.
-      resolve(bookmarks);
-    });
+      try {
+          const children = await new Promise((resolveChildren) => {
+              chrome.bookmarks.getChildren(folderId, resolveChildren);
+          });
+          if (children) {
+              for (const child of children) {
+                  await traverseBookmarks(child);
+              }
+          }
+          resolve(bookmarks);
+      } catch (error) {
+          reject(error);
+      }
   });
 }
-
-function setSelectedFolderId(folderId) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.sync.set({ selectedFolderId: folderId }, resolve);
-  });
-}
-
 function updateFolderBookmarks(
   folderId,
   bookmarkBarBookmarks,
@@ -386,7 +430,6 @@ function updateFolderBookmarks(
     }
   });
 }
-
 function createNewBookmarkFolder() {
   return new Promise((resolve, reject) => {
     const now = new Date();
@@ -411,5 +454,470 @@ function createNewBookmarkFolder() {
         }
       }
     );
+  });
+}
+
+////// UUID MAPPINGS //////
+async function initializeUuidMappings() {
+  try {
+      let uuidMappings = {}; // Initialize uuidMappings
+
+      const syncResult = await chrome.storage.sync.get({ favorites: [], selectedFolder: null });
+      const syncFavorites = syncResult.favorites;
+      const selectedFolder = syncResult.selectedFolder;
+
+      // Map favorites
+      for (const favorite of syncFavorites) {
+          if (!uuidMappings[favorite.uuid]) {
+              const folderId = await findFolderId(favorite.name, favorite.index);
+              if (folderId) {
+                  uuidMappings[favorite.uuid] = folderId;
+              }
+          }
+      }
+
+        // Map selectedFolder (if exists)
+      if (selectedFolder && !uuidMappings[selectedFolder.uuid]) {
+        const folderId = await findFolderId(selectedFolder.name, selectedFolder.index);
+        if (folderId) {
+            // Skip adding mapping if folderId is already mapped
+            const existingUuid = Object.keys(uuidMappings).find(key => uuidMappings[key] === folderId);
+            if (!existingUuid) {
+                uuidMappings[selectedFolder.uuid] = folderId;
+            }
+        }
+      }
+
+      await chrome.storage.local.set({ uuidMappings: uuidMappings });
+  } catch (error) {
+      console.error("Error initializing uuidMappings:", error);
+  }
+}
+async function updateUuidMapping(uuid, folderId) {
+  try {
+      const folderExists = await checkFolderExists(folderId);
+      if (folderExists) {
+          const localResult = await chrome.storage.local.get({ uuidMappings: {} });
+          const uuidMappings = localResult.uuidMappings;
+          uuidMappings[uuid] = folderId;
+          await chrome.storage.local.set({ uuidMappings: uuidMappings });
+      } else {
+          console.warn(`Folder with ID ${folderId} does not exist. Removing uuidMapping for ${uuid}.`);
+          await removeUuidMapping(uuid);
+      }
+  } catch (error) {
+      console.error("Error updating uuidMapping:", error);
+  }
+}
+async function checkFolderExists(folderId) {
+  return new Promise((resolve) => {
+      chrome.bookmarks.get(folderId, (folder) => {
+          resolve(!!folder && folder.length > 0);
+      });
+  });
+}
+async function removeUuidMapping(uuid) {
+  try {
+      const localResult = await chrome.storage.local.get({ uuidMappings: {}, selectedFolder: null, favorites: [] });
+      const uuidMappings = localResult.uuidMappings;
+
+      if (!uuidMappings[uuid]) return; // Check if uuid exists in uuidMappings
+
+      const selectedFolder = localResult.selectedFolder;
+      const favorites = localResult.favorites;
+
+      // Check if uuid is in selectedFolder or uuid is in favorites
+      if (selectedFolder && selectedFolder.uuid === uuid || favorites.some(fav => fav.uuid === uuid)) return;
+
+      // Remove uuidMapping
+      delete uuidMappings[uuid];
+      await chrome.storage.local.set({ uuidMappings: uuidMappings });
+
+  } catch (error) {
+      console.error("Error removing uuidMapping:", error);
+  }
+}
+async function validateExistingUuidMappings(uuidMappings) {
+  for (const uuid in uuidMappings) {
+      const folderId = uuidMappings[uuid];
+      const folderExists = await checkFolderExists(folderId);
+      if (!folderExists) {
+          console.warn(`Folder with ID ${folderId} does not exist. Removing uuidMapping for ${uuid}.`);
+          delete uuidMappings[uuid];
+      }
+  }
+  await chrome.storage.local.set({ uuidMappings: uuidMappings });
+}
+
+////// FAVORITES HANDLING //////
+async function initializeFavorites() {
+  try {
+      const syncResult = await chrome.storage.sync.get({ favorites: [] });
+      const syncFavorites = syncResult.favorites;
+
+      if (syncFavorites && syncFavorites.length > 0) {
+          const localFavorites = [];
+          const folderIds = new Set(); // To track seen folderIds
+
+          for (const favorite of syncFavorites) {
+              const folderId = await getFolderIdFromMappings(favorite.uuid);
+              if (folderId && !folderIds.has(folderId)) { // Check for duplicates
+                  localFavorites.push({ uuid: favorite.uuid, id: folderId });
+                  folderIds.add(folderId); // Add folderId to the set
+              } else if (folderId){
+                  console.warn(`Duplicate or invalid Folder ID ${folderId} for UUID ${favorite.uuid}.`);
+              } else {
+                  console.warn(`Folder ID not found for UUID ${favorite.uuid}.`);
+              }
+          }
+
+          await chrome.storage.local.set({ favorites: localFavorites });
+      }
+  } catch (error) {
+      console.error("Error initializing favorites:", error);
+  }
+}
+async function setFavoritesFromPopup(name, index, folderId, sendResponse) {
+  try {
+      const uuid = await getUuidFromFolderId(folderId);
+      const favorites = await getSyncFavorites();
+      const localFavorites = await getLocalFavorites();
+
+      const isFavorited = favorites.some(fav => fav.uuid === uuid);
+
+      if (isFavorited) {
+          await removeFavorite(uuid);
+          return;
+      }
+
+      // Check for duplicates before adding
+      const folderIdExists = localFavorites.some(fav => fav.id === folderId);
+      if (!folderIdExists) {
+          favorites.push({ uuid: uuid, name: name, index: index });
+          localFavorites.push({ uuid: uuid, id: folderId });
+          await updateFavoriteStorage(localFavorites, favorites);
+          sendResponse({ success: true, message: "Favorites updated successfully." });
+      } else {
+          sendResponse({ success: false, error: "Folder ID already exists." });
+      }
+
+  } catch (error) {
+      console.error("Error setting favorites:", error);
+      sendResponse({ success: false, error: "Error setting favorites." });
+  }
+}
+async function removeFavorite(uuid) {
+  try {
+      const syncFavorites = await getSyncFavorites();
+      const localFavorites = await getLocalFavorites();
+
+      const newSyncFavorites = syncFavorites.filter(fav => fav.uuid !== uuid);
+      const newLocalFavorites = localFavorites.filter(fav => fav.uuid !== uuid);
+
+      await updateFavoriteStorage(newLocalFavorites, newSyncFavorites);
+      await removeUuidMapping(uuid);
+  } catch (error) {
+    
+    console.error("Error removing favorite:", error);
+  }
+}
+async function setFavorites(favorites) {
+  try {
+      const localFavorites = [];
+
+      for (const favorite of favorites) {
+          const folderId = await getFolderIdFromMappings(favorite.uuid); // Retrieve folderId using uuidMappings
+          if (folderId) {
+              localFavorites.push({ uuid: favorite.uuid, id: folderId });
+          } else {
+              console.warn(`Folder ID not found for UUID ${favorite.uuid}.`);
+          }
+      }
+
+      await updateFavoriteStorage(localFavorites, favorites);
+
+  } catch (error) {
+      console.error("Error setting favorites:", error);
+  }
+}
+async function validateFavorites() {
+  try {
+    const syncFavorites = await getSyncFavorites();
+      const localFavorites = await getLocalFavorites();
+      const validSyncFavorites = await filterValidSyncFavorites(syncFavorites, localFavorites);
+
+      if (validSyncFavorites.length !== syncFavorites.length) {
+          const validLocalFavorites = filterValidLocalFavorites(localFavorites, validSyncFavorites);
+          await updateFavoriteStorage(validLocalFavorites, validSyncFavorites);
+      }
+  } catch (error) {
+      console.error("Error validating favorites:", error);
+  }
+}
+async function getSyncFavorites() {
+  return new Promise((resolve) => {
+      chrome.storage.sync.get({ favorites: [] }, (result) => {
+          resolve(result.favorites);
+      });
+  });
+}
+async function getLocalFavorites() {
+  return new Promise((resolve) => {
+      chrome.storage.local.get({ favorites: [] }, (result) => {
+          resolve(result.favorites);
+      });
+  });
+}
+async function filterValidSyncFavorites(syncFavorites, localFavorites) {
+  return new Promise((resolve) => {
+      chrome.bookmarks.getChildren("2", (children) => {
+          const validFavorites = syncFavorites.filter((fav) => {
+              const localFavorite = localFavorites.find(localFav => localFav.uuid === fav.uuid);
+              if (localFavorite) {
+                  const foundChild = children.find(child => child.id === localFavorite.id);
+                  return !!foundChild;
+              }
+              return false;
+          });
+          resolve(validFavorites);
+      });
+  });
+}
+function filterValidLocalFavorites(localFavorites, validSyncFavorites) {
+  return localFavorites.filter((fav) => {
+      return validSyncFavorites.some(validFav => validFav.uuid === fav.uuid);
+  });
+}
+async function updateFavoriteStorage(validLocalFavorites, validSyncFavorites) {
+  await Promise.all([
+      chrome.storage.local.set({ favorites: validLocalFavorites }),
+      chrome.storage.sync.set({ favorites: validSyncFavorites })
+  ]);
+}
+async function synchronizeFavorites() {
+  try {
+      const { syncFavorites } = await chrome.storage.sync.get({ favorites: [] });
+      const { localFavorites } = await chrome.storage.local.get({ favorites: [] });
+
+      if (syncFavorites && Array.isArray(syncFavorites)) {
+        // Remove extra favorites first
+        let updatedLocalFavorites = localFavorites.filter(localFav =>
+            syncFavorites.some(syncFav => syncFav.uuid === localFav.uuid)
+        );
+
+        // Add missing favorites
+        for (const favorite of syncFavorites) {
+            const { name, index, uuid: syncUuid } = favorite;
+            if (!updatedLocalFavorites.some(fav => fav.uuid === syncUuid)) {
+                const folderId = await findFolderId(name, index);
+                if (folderId) {
+                    updatedLocalFavorites.push({ uuid: syncUuid, id: folderId });
+                } else {
+                    console.warn(`Folder not found for favorite: ${name}, ${index}`);
+                }
+            }
+        }
+
+        await chrome.storage.local.set({ favorites: updatedLocalFavorites });
+      } else {
+          // If syncFavorites is empty, clear localFavorites
+          await chrome.storage.local.set({ favorites: [] });
+      }
+  } catch (error) {
+      console.error("Error synchronizing favorites:", error);
+  }
+}
+
+////// SELECTED FOLDER HANDLING //////
+async function initializeSelectedFolder() {
+  try {
+      const { selectedFolder: syncSelectedFolder, favorites: syncFavorites } = await chrome.storage.sync.get({
+          selectedFolder: null,
+          favorites: []
+      });
+
+      if (!syncSelectedFolder || !syncSelectedFolder.uuid) {
+          return; // No selected folder to initialize
+      }
+
+      const { uuid: uuid, name: selectedName, index: selectedIndex } = syncSelectedFolder;
+      const { uuidMappings } = await chrome.storage.local.get({ uuidMappings: {} });
+      const folderId = uuidMappings[uuid];
+
+      if (!folderId) {
+          console.warn(`Folder ID not found for UUID ${uuid}.`);
+          return;
+      }
+
+      const existingUuid = Object.keys(uuidMappings).find(key => uuidMappings[key] === folderId);
+
+      if (!existingUuid || existingUuid === uuid) {
+          // No conflict or same UUID, set local selected folder
+          await updateLocalSelectedFolder(uuid, folderId);
+          return;
+      }
+
+      // Conflict: Check if existingUuid is in favorites and matches
+      const matchingFavorite = syncFavorites.find(fav => fav.uuid === existingUuid);
+
+      if (matchingFavorite && matchingFavorite.name === selectedName && matchingFavorite.index === selectedIndex) {
+          // Update sync and local storage with the existing UUID
+          await updateSelectedFolderStorage(existingUuid, folderId, selectedName, selectedIndex);
+      } else {
+          console.warn(`Folder ID ${folderId} is mapped to a different UUID (${existingUuid}) with mismatched name/index, but not in favorites.`);
+      }
+  } catch (error) {
+      console.error("Error initializing selected folder:", error);
+  }
+}
+async function setSelectedFolder(folderId, folderName, folderIndex) {
+  try {
+      const uuid = await getUuidFromFolderId(folderId);
+      await updateSelectedFolderStorage(uuid, folderId, folderName, folderIndex);
+  } catch (error) {
+      console.error("Error setting selected folder:", error);
+  }
+}
+async function updateSelectedFolderStorage(uuid, folderId, folderName, folderIndex) {
+  try {
+      await updateLocalSelectedFolder(uuid, folderId); // Update local storage and send message
+
+      // Set selectedFolder data in sync storage
+      const syncSelectedFolder = { uuid: uuid, name: folderName, index: folderIndex };
+      await chrome.storage.sync.set({ selectedFolder: syncSelectedFolder });
+
+  } catch (error) {
+      console.error("Error updating selected folder storage:", error);
+      throw error; // Re-throw the error to be handled by the caller
+  }
+}
+async function updateLocalSelectedFolder(uuid, folderId) {
+  try {
+      const localSelectedFolder = { uuid: uuid, id: folderId };
+      await chrome.storage.local.set({ selectedFolder: localSelectedFolder });
+  } catch (error) {
+      console.error("Error updating local selected folder:", error);
+      throw error; // Re-throw the error to be handled by the caller
+  }
+}
+async function synchronizeSelectedFolder() {
+  try {
+      const { selectedFolder } = await chrome.storage.sync.get({ selectedFolder: null });
+      const { localSelectedFolder } = await chrome.storage.local.get({ selectedFolder: null });
+      if(!selectedFolder) {
+        return;
+      }
+      if (!localSelectedFolder || selectedFolder.uuid !== localSelectedFolder.uuid) {
+          const { name, index, uuid } = selectedFolder;
+          const folderId = await getFolderIdFromMappings(uuid);
+          if (!folderId) {
+              folderId = await findFolderId(name, index);
+              if (!folderId) {
+                console.warn(`Folder not found for selected folder: ${name}, ${index}`);
+                return;
+            }
+          }
+          await updateLocalSelectedFolder(uuid, folderId);
+      }
+  } catch (error) {
+      console.error("Error synchronizing selected folder:", error);
+  }
+}
+
+///// UTILITY FUNCTIONS /////
+async function isValidBookmarkId(id) {
+  return new Promise((resolve) => {
+    chrome.bookmarks.get(id, (node) => {
+      if (chrome.runtime.lastError) {
+        // Log the error for debugging purposes
+        // console.warn("Error checking bookmark ID:", id, chrome.runtime.lastError.message);
+        resolve(false); // Resolve with false in case of an error
+        return;
+      }
+      resolve(!!node); // Resolve with true if node exists, false otherwise
+    });
+  });
+}
+async function sendMessageToPopup(message) {
+  try {
+      chrome.runtime.sendMessage(message);
+      if (chrome.runtime.lastError) {
+          console.error("Error sending message to popup:", chrome.runtime.lastError.message);
+      } else {
+          console.log("Message sent successfully to popup:", message);
+      }
+  } catch (error) {
+      console.error("Error sending message to popup:", error);
+  }
+}
+async function getUuidFromFolderId(folderId) {
+  try {
+      const localResult = await chrome.storage.local.get({ uuidMappings: {} });
+      const uuidMappings = localResult.uuidMappings;
+      let uuid = Object.keys(uuidMappings).find(key => uuidMappings[key] === folderId);
+
+      if (!uuid) {
+          uuid = await generateUniqueUuid(); // Generate new uuid if needed
+          await updateUuidMapping(uuid, folderId); // Update the mapping
+      }
+
+      return uuid;
+  } catch (error) {
+      console.error("Error retrieving/generating uuid:", error);
+      return null; // Return null in case of error
+  }
+}
+async function getFolderIdFromMappings(uuid) {
+  const localResult = await chrome.storage.local.get({ uuidMappings: {} });
+  const uuidMappings = localResult.uuidMappings;
+  return uuidMappings[uuid];
+}
+async function generateUniqueUuid() {
+  let uuid;
+  let isUnique = false;
+  while (!isUnique) {
+      uuid = crypto.randomUUID();
+      const favorites = await getSyncFavorites();
+      isUnique = !favorites.some(fav => fav.uuid === uuid);
+  }
+  return uuid;
+}
+async function ensureCurrentFolder() {
+  return new Promise((resolve, reject) => {
+      chrome.storage.local.get(["selectedFolder"], async function (result) {
+          let currentFolder = result.selectedFolder;
+          let currentFolderId = currentFolder ? currentFolder.id : null;
+          const bookmarkBarBookmarks = await new Promise((resolve) => {
+              chrome.bookmarks.getChildren("1", resolve);
+          });
+
+          if ((!currentFolderId || !(await isValidBookmarkId(currentFolderId))) && bookmarkBarBookmarks && bookmarkBarBookmarks.length > 0) {
+              try {
+                  currentFolderId = await createNewBookmarkFolder();
+                  if (!currentFolderId) {
+                      reject("Error creating previous folder.");
+                      return;
+                  }
+              } catch (error) {
+                  reject(error);
+                  return;
+              }
+          }
+          resolve(currentFolderId);
+      });
+  });
+}
+async function fetchBookmarks(currentFolderId) {
+  return Promise.all([
+      getBookmarksInFolder("1"),
+      currentFolderId ? getBookmarksInFolder(currentFolderId) : Promise.resolve([]),
+  ]);
+}
+async function findFolderId(name, index) {
+  return new Promise((resolve) => {
+      chrome.bookmarks.getChildren("2", (children) => {
+          const foundFolder = children.find(child => child.title === name && child.index === index);
+          resolve(foundFolder ? foundFolder.id : null);
+      });
   });
 }
